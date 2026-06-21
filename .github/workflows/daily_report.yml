@@ -8,6 +8,10 @@ on:
   # 支持手动触发
   workflow_dispatch:
 
+# 赋予写权限，否则 git push 会失败
+permissions:
+  contents: write
+
 jobs:
   generate-report:
     runs-on: ubuntu-latest
@@ -36,10 +40,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main
           git add reports/
-          git diff --quiet && git diff --staged --quiet || git commit -m "chore: 自动更新 $(date +%Y-%m-%d) 复盘报告"
-          git push
-        continue-on-error: true
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "无变更，跳过提交"
+          else
+            git commit -m "chore: 自动更新 $(date +%Y-%m-%d) 复盘报告"
+            git push
+          fi
       
       - name: 📎 上传报告为 Artifact（备用下载）
         uses: actions/upload-artifact@v4
