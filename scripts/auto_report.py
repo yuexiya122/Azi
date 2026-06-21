@@ -413,6 +413,119 @@ def call_deepseek(system_prompt: str, user_prompt: str) -> str:
         return error_msg
 
 
+def format_for_wechat(md_content: str) -> str:
+    """将 Markdown 格式转换为微信可读的纯文本格式"""
+    import re
+    
+    text = md_content
+    
+    # 1. 去掉代码块
+    text = re.sub(r'```[\s\S]*?```', '', text)
+    
+    # 2. 表格转为缩进列表
+    lines = text.split('\n')
+    result = []
+    in_table = False
+    table_header = []
+    table_rows = []
+    last_was_table = False
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # 检测表格行
+        if stripped.startswith('|') and stripped.endswith('|'):
+            if not in_table:
+                in_table = True
+                table_header = []
+                table_rows = []
+            
+            cells = [c.strip() for c in stripped.split('|')[1:-1]]
+            
+            # 跳过分隔行
+            if all(re.match(r'^[-: ]+$', c) for c in cells):
+                continue
+            
+            if not table_header:
+                table_header = cells
+            else:
+                table_rows.append(cells)
+            continue
+        
+        # 表格结束，输出格式化表格
+        if in_table and not stripped.startswith('|'):
+            in_table = False
+            if table_header and table_rows:
+                for row in table_rows:
+                    row_text = ' · '.join(
+                        f"{table_header[i] if i < len(table_header) else ''}：{row[i] if i < len(row) else ''}"
+                        for i in range(min(len(table_header), len(row)))
+                    )
+                    result.append('  ' + row_text)
+            result.append('')
+            table_header = []
+            table_rows = []
+            last_was_table = True
+        
+        # 3. 标题：### → 【】, ## → ▎, # → 去掉
+        if stripped.startswith('#### '):
+            result.append('')
+            result.append('▸ ' + stripped[5:])
+            result.append('')
+        elif stripped.startswith('### '):
+            result.append('')
+            result.append('【' + stripped[4:] + '】')
+            result.append('')
+        elif stripped.startswith('## '):
+            result.append('')
+            result.append('━━━ ' + stripped[3:] + ' ━━━')
+            result.append('')
+        elif stripped.startswith('# '):
+            result.append('')
+            result.append('◆ ' + stripped[2:] + ' ◆')
+            result.append('')
+        
+        # 4. 分隔线跳过
+        elif stripped in ('---', '--- ', '***', '---'):
+            result.append('')
+        
+        # 5. 引用块
+        elif stripped.startswith('> '):
+            result.append('  「' + stripped[2:] + '」')
+        
+        # 6. 列表项
+        elif re.match(r'^[\-\*]\s', stripped):
+            result.append('  • ' + re.sub(r'^[\-\*]\s+', '', stripped))
+        
+        # 7. 数字列表
+        elif re.match(r'^\d+\.\s', stripped):
+            result.append('  ' + stripped)
+        
+        # 8. 粗体：去掉 ** 标记
+        else:
+            line_text = re.sub(r'\*\*(.*?)\*\*', r'【\1】', stripped)
+            # 斜体：去掉
+            line_text = re.sub(r'\*(.*?)\*', r'\1', line_text)
+            # 行内代码
+            line_text = re.sub(r'`(.*?)`', r'\1', line_text)
+            if line_text.strip():
+                result.append(line_text)
+            else:
+                result.append('')
+    
+    # 9. 清理多余空行
+    clean = []
+    prev_empty = False
+    for line in result:
+        is_empty = not line.strip()
+        if is_empty and prev_empty:
+            continue
+        clean.append(line)
+        prev_empty = is_empty
+    
+    return '\n'.join(clean)
+
+
 def push_wechat(title: str, content: str) -> bool:
     """通过 PushPlus 推送到微信"""
     if not PUSHPLUS_TOKEN:
@@ -422,8 +535,14 @@ def push_wechat(title: str, content: str) -> bool:
     try:
         import requests
         
-        # PushPlus 限制 4000 字符，截取摘要
-        send_content = content[:3800] + "\n\n...（完整报告见 GitHub Actions Artifacts）" if len(content) > 3800 else content
+        # 格式化 Markdown 为微信可读格式
+        formatted = format_for_wechat(content)
+        
+        # 截取（微信限制约4000字符）
+        if len(formatted) > 3800:
+            send_content = formatted[:3800] + "\n\n…（完整报告见 GitHub）"
+        else:
+            send_content = formatted
         
         url = "https://www.pushplus.plus/send"
         data = {
