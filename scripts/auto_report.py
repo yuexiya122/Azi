@@ -268,10 +268,119 @@ A50期货：涨/跌X% → 预示开盘方向
 # 核心函数
 # ============================================================
 
-def call_deepseek(system_prompt: str, user_prompt: str) -> str:
+# ============================================================
+# 实时数据抓取
+# ============================================================
+
+def fetch_real_data() -> str:
+    """抓取真实市场数据，返回注入提示词的上下文文本"""
+    import requests
+    parts = []
+    
+    # 1. 涨停数据（从东方财富 Choice 或同花顺接口）
+    try:
+        # 东方财富涨停板数据接口
+        url = "https://push2ex.eastmoney.com/getTopicZTPool"
+        params = {
+            "ut": "7eea3edcaed734bea9ce16efe",
+            "PageIndex": 1,
+            "PageSize": 200,
+            "sort": "fbt",
+            "fbt": "10",
+            "pt": "1",
+            "dpt": "wz",
+        }
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json().get("data", {})
+            pool = data.get("pool", [])
+            zt_count = len(pool)
+            # 统计连板
+            lb_map = {}
+            for item in pool:
+                days = item.get("c", "").count("板") or "1"
+                try:
+                    days_num = int(days.replace("板", "").replace("天", ""))
+                except:
+                    days_num = 1
+                if days_num > 1:
+                    lb_map[days_num] = lb_map.get(days_num, 0) + 1
+            
+            parts.append(f"【真实涨停数据】今日涨停{zt_count}家")
+            if lb_map:
+                parts.append(f"连板分布：{lb_map}")
+            
+            # TOP10 涨停原因
+            reasons = []
+            for item in pool[:15]:
+                name = item.get("c", "")
+                reason = item.get("hybk", "")
+                if reason:
+                    reasons.append(f"{name}({reason})")
+            if reasons:
+                parts.append(f"涨停样本：{'; '.join(reasons[:10])}")
+    except Exception as e:
+        parts.append(f"【涨停数据获取失败：{e}】")
+    
+    # 2. 淘股吧热门帖子
+    try:
+        # 用百度搜索淘股吧最新热门复盘
+        search_url = "https://www.baidu.com/s"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        params = {"wd": "淘股吧 今日复盘 涨停 2026", "rn": "10"}
+        resp = requests.get(search_url, params=params, headers=headers, timeout=10)
+        if "淘股吧" in resp.text:
+            parts.append("【淘股吧热帖参考】请参考淘股吧今日热门复盘帖的风格和核心观点来辅助分析。重点关注：涨停梯队判断、情绪周期定位、主线题材持续性的辩论。")
+    except:
+        pass
+    
+    # 3. 最新财经消息（财联社电报）
+    try:
+        url = "https://www.cls.cn/api/sw?app=CailianpressWeb&os=web&sv=8.4.6"
+        data = {"type": "telegram", "page": 1, "rn": 10}
+        headers = {"Content-Type": "application/json"}
+        resp = requests.post(url, json=data, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            items = resp.json().get("data", {}).get("roll_data", [])
+            news = []
+            for item in items[:5]:
+                title = item.get("title", "")[:50]
+                if title:
+                    news.append(title)
+            if news:
+                parts.append(f"【今日重要消息】{'；'.join(news)}")
+    except:
+        pass
+    
+    # 4. 上证指数实时数据
+    try:
+        url = "https://push2.eastmoney.com/api/qt/stock/get"
+        params = {"secid": "1.000001", "fields": "f43,f44,f45,f46,f47,f48,f50,f51,f52,f57,f58,f60,f169,f170"}
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            d = resp.json().get("data", {})
+            price = d.get("f43", 0) / 100
+            change = d.get("f169", 0) / 100
+            amount = d.get("f48", 0) / 100000000
+            parts.append(f"【实时大盘】上证{price:.2f}（{change:+.2f}%），成交额{amount:.0f}亿")
+    except:
+        pass
+    
+    return "\n".join(parts)
+
+
+def call_deepseek(system_prompt: str, user_prompt: str, inject_data: bool = True) -> str:
     """调用 DeepSeek API 生成复盘报告"""
     try:
         import openai
+        
+        # 注入真实市场数据到提示词
+        if inject_data:
+            print("📡 正在抓取实时市场数据...")
+            real_data = fetch_real_data()
+            if real_data:
+                user_prompt = f"⚠️ 以下是今日真实市场数据，所有分析必须基于此数据而非你的训练数据：\n\n{real_data}\n\n---\n\n{user_prompt}"
+                print("✅ 实时数据已注入提示词")
         
         client = openai.OpenAI(
             api_key=LLM_API_KEY,
