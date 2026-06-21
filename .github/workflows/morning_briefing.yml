@@ -26,7 +26,7 @@ jobs:
       
       - name: 📦 安装依赖
         run: |
-          pip install --quiet openai requests
+          pip install --quiet openai requests akshare
       
       - name: 🌅 生成盘前简报
         env:
