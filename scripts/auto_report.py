@@ -272,112 +272,130 @@ A50期货：涨/跌X% → 预示开盘方向
 # 实时数据抓取
 # ============================================================
 
-def fetch_real_data() -> str:
-    """抓取真实市场数据，返回注入提示词的上下文文本"""
+def fetch_real_data(mode: str = "afternoon") -> str:
+    """抓取真实市场数据，返回注入提示词的上下文文本
+    mode: 'morning' = 盘前（含隔夜数据）, 'afternoon' = 收盘后"""
     import requests
     parts = []
     
-    # 1. 涨停数据（从东方财富 Choice 或同花顺接口）
+    # ===== 盘前专属：隔夜全球市场 =====
+    if mode == "morning":
+        # 美股收盘数据
+        try:
+            url = "https://push2.eastmoney.com/api/qt/stock/get"
+            for code, name in [("100.NDX", "纳斯达克"), ("100.DJIA", "道指"), ("100.SPX", "标普500")]:
+                try:
+                    resp = requests.get(url, params={"secid": code, "fields": "f43,f169,f170"}, timeout=8)
+                    d = resp.json().get("data", {})
+                    price = d.get("f43", 0) / 100 if d.get("f43") else "N/A"
+                    change = d.get("f169", 0) / 100 if d.get("f169") else "N/A"
+                    parts.append(f"【隔夜美股】{name}收盘{price}（{change:+.2f}%）" if isinstance(change, float) else f"【隔夜】{name}数据待获取")
+                except:
+                    pass
+        except:
+            pass
+        
+        # A50期货
+        try:
+            resp = requests.get("https://push2.eastmoney.com/api/qt/stock/get", 
+                              params={"secid": "100.XINA50", "fields": "f43,f169,f170"}, timeout=8)
+            d = resp.json().get("data", {})
+            price = d.get("f43", 0) / 100
+            change = d.get("f169", 0) / 100
+            parts.append(f"【A50期货】{price:.0f}（{change:+.2f}%），预示A股开盘方向")
+        except:
+            pass
+    
+    # ===== 通用数据 =====
+    
+    # 1. 涨停数据（从东方财富接口，仅交易时段有效）
     try:
-        # 东方财富涨停板数据接口
         url = "https://push2ex.eastmoney.com/getTopicZTPool"
         params = {
             "ut": "7eea3edcaed734bea9ce16efe",
-            "PageIndex": 1,
-            "PageSize": 200,
-            "sort": "fbt",
-            "fbt": "10",
-            "pt": "1",
-            "dpt": "wz",
+            "PageIndex": 1, "PageSize": 200,
+            "sort": "fbt", "fbt": "10", "pt": "1", "dpt": "wz",
         }
         resp = requests.get(url, params=params, timeout=10)
         if resp.status_code == 200:
             data = resp.json().get("data", {})
             pool = data.get("pool", [])
             zt_count = len(pool)
-            # 统计连板
             lb_map = {}
             for item in pool:
-                days = item.get("c", "").count("板") or "1"
+                days_str = str(item.get("c", "1"))
                 try:
-                    days_num = int(days.replace("板", "").replace("天", ""))
+                    days_num = int(''.join(c for c in days_str if c.isdigit()) or "1")
                 except:
                     days_num = 1
                 if days_num > 1:
                     lb_map[days_num] = lb_map.get(days_num, 0) + 1
             
-            parts.append(f"【真实涨停数据】今日涨停{zt_count}家")
+            parts.append(f"【真实涨停数据】涨停{zt_count}家")
             if lb_map:
-                parts.append(f"连板分布：{lb_map}")
+                lb_str = ", ".join(f"{k}板:{v}只" for k, v in sorted(lb_map.items(), reverse=True))
+                parts.append(f"连板分布：{lb_str}")
             
-            # TOP10 涨停原因
             reasons = []
-            for item in pool[:15]:
-                name = item.get("c", "")
-                reason = item.get("hybk", "")
+            for item in pool[:10]:
+                name = str(item.get("c", ""))[:20]
+                reason = str(item.get("hybk", ""))[:30]
                 if reason:
                     reasons.append(f"{name}({reason})")
             if reasons:
-                parts.append(f"涨停样本：{'; '.join(reasons[:10])}")
+                parts.append(f"涨停TOP10：{'；'.join(reasons)}")
     except Exception as e:
-        parts.append(f"【涨停数据获取失败：{e}】")
+        if mode != "morning":
+            parts.append(f"【涨停数据获取失败】")
     
-    # 2. 淘股吧热门帖子
+    # 2. 淘股吧热帖参考指令
     try:
-        # 用百度搜索淘股吧最新热门复盘
-        search_url = "https://www.baidu.com/s"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        params = {"wd": "淘股吧 今日复盘 涨停 2026", "rn": "10"}
-        resp = requests.get(search_url, params=params, headers=headers, timeout=10)
-        if "淘股吧" in resp.text:
-            parts.append("【淘股吧热帖参考】请参考淘股吧今日热门复盘帖的风格和核心观点来辅助分析。重点关注：涨停梯队判断、情绪周期定位、主线题材持续性的辩论。")
+        parts.append("【淘股吧热帖参考】请模仿淘股吧/雪球热门复盘帖的风格，重点关注涨停梯队、情绪周期、主线题材。观点要鲜明，拒绝模棱两可。")
     except:
         pass
     
-    # 3. 最新财经消息（财联社电报）
+    # 3. 最新消息
     try:
         url = "https://www.cls.cn/api/sw?app=CailianpressWeb&os=web&sv=8.4.6"
-        data = {"type": "telegram", "page": 1, "rn": 10}
+        data = {"type": "telegram", "page": 1, "rn": 8}
         headers = {"Content-Type": "application/json"}
         resp = requests.post(url, json=data, headers=headers, timeout=10)
         if resp.status_code == 200:
             items = resp.json().get("data", {}).get("roll_data", [])
-            news = []
-            for item in items[:5]:
-                title = item.get("title", "")[:50]
-                if title:
-                    news.append(title)
+            news = [item.get("title", "")[:60] for item in items[:5] if item.get("title")]
             if news:
                 parts.append(f"【今日重要消息】{'；'.join(news)}")
     except:
         pass
     
-    # 4. 上证指数实时数据
+    # 4. 大盘实时数据
     try:
-        url = "https://push2.eastmoney.com/api/qt/stock/get"
-        params = {"secid": "1.000001", "fields": "f43,f44,f45,f46,f47,f48,f50,f51,f52,f57,f58,f60,f169,f170"}
-        resp = requests.get(url, params=params, timeout=10)
-        if resp.status_code == 200:
-            d = resp.json().get("data", {})
-            price = d.get("f43", 0) / 100
-            change = d.get("f169", 0) / 100
-            amount = d.get("f48", 0) / 100000000
-            parts.append(f"【实时大盘】上证{price:.2f}（{change:+.2f}%），成交额{amount:.0f}亿")
+        for secid, name in [("1.000001", "上证"), ("0.399006", "创业板"), ("1.000688", "科创50")]:
+            try:
+                resp = requests.get("https://push2.eastmoney.com/api/qt/stock/get",
+                                  params={"secid": secid, "fields": "f43,f169,f170,f48"}, timeout=8)
+                d = resp.json().get("data", {})
+                price = d.get("f43", 0) / 100
+                change = d.get("f169", 0) / 100
+                amount = d.get("f48", 0) / 100000000
+                parts.append(f"【{name}】{price:.2f}（{change:+.2f}%），成交{amount:.0f}亿" if d.get("f43") else f"【{name}】数据待获取")
+            except:
+                pass
     except:
         pass
     
     return "\n".join(parts)
 
 
-def call_deepseek(system_prompt: str, user_prompt: str, inject_data: bool = True) -> str:
+def call_deepseek(system_prompt: str, user_prompt: str, inject_data: bool = True, mode: str = "afternoon") -> str:
     """调用 DeepSeek API 生成复盘报告"""
     try:
         import openai
         
         # 注入真实市场数据到提示词
         if inject_data:
-            print("📡 正在抓取实时市场数据...")
-            real_data = fetch_real_data()
+            print(f"📡 正在抓取实时市场数据（{mode}模式）...")
+            real_data = fetch_real_data(mode=mode)
             if real_data:
                 user_prompt = f"⚠️ 以下是今日真实市场数据，所有分析必须基于此数据而非你的训练数据：\n\n{real_data}\n\n---\n\n{user_prompt}"
                 print("✅ 实时数据已注入提示词")
@@ -611,7 +629,7 @@ def main():
         title = f"🌅 盘前简报 {date_cn} {weekday_cn}"
         
         # 生成报告
-        report = call_deepseek(SYSTEM_PROMPT, user_prompt)
+        report = call_deepseek(SYSTEM_PROMPT, user_prompt, mode="morning")
         
         # 保存
         filepath = save_report(report, f"{date_str}_morning")
