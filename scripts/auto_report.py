@@ -196,8 +196,9 @@ def save_report(content: str, date_str: str) -> Path:
 def main():
     now = datetime.now()
     
-    # 跳过周末
-    if now.weekday() >= 5:
+    # 跳过周末（除非手动强制运行）
+    force_run = os.environ.get("FORCE_RUN", "0") == "1"
+    if now.weekday() >= 5 and not force_run:
         print(f"今天是 {['周一','周二','周三','周四','周五','周六','周日'][now.weekday()]}，跳过复盘。")
         return
     
