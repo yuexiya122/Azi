@@ -40,10 +40,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git pull origin main
           git add reports/
           if git diff --quiet && git diff --staged --quiet; then
-            echo "无变更，跳过提交"
+            echo "ℹ️ 无新增报告，跳过提交"
           else
             git commit -m "chore: 自动更新 $(date +%Y-%m-%d) 复盘报告"
             git push
