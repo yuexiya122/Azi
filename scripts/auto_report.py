@@ -271,6 +271,58 @@ WEEKEND_SUNDAY_PROMPT = """## 任务：下周量化作战计划
 "下周量化评分X/10，核心矛盾是XX vs XX，最确定的机会在XX方向（概率X%），最大风险是XX（概率X%），策略：XX。" """
 
 # ============================================================
+# 盘前简报提示词（每天 8:50 推送）
+# ============================================================
+
+MORNING_PROMPT = """## 任务：盘前简报（9点前必读）
+
+日期：{date_str}（{weekday}）| 昨日：{yesterday_str}
+
+按以下6段极简格式输出，总字数350-500：
+
+【隔夜全球速览】
+美股：道指X%、纳指X%、标普X% → 对A股传导：偏多/偏空/中性
+中概股：XX涨X%、XX跌X%
+A50期货：涨/跌X% → 预示开盘方向
+大宗：原油X%、黄金X%、铜X%
+汇率：离岸人民币X、美元指数X → 北向资金倾向
+一句话：外围偏X，A股大概率X开
+
+【盘前重磅】
+🟢 利好：一句话 + 利好板块XX
+🔴 利空：一句话 + 影响板块XX
+（只列今日盘前6小时内发布的消息，没有就写"盘前消息面平静"）
+
+【昨日复盘精华】
+昨日涨停X家 | 炸板率X% | 连板最高X板（XX股）
+最强风口：XX（X家涨停，龙头XX）
+情绪周期：处于X阶段，昨天已经X
+三派速评：
+▎游资：XX股是情绪锚，今日竞价如果X则做多，X则防守
+▎题材：主线XX还在X阶段，还能走X天；暗线XX蠢蠢欲动
+▎量化：昨日数据模型显示今日做多概率X%，建议仓位X成
+
+【今日操作策略】
+竞价（9:15-9:25）看点：
+→ XX股的封单量（如果大于X万手则超预期）
+→ XX板块的竞价强弱（如果高开X%以上则今天主线确认）
+开盘（9:30-10:00）应对：
+→ 如果高开高走且成交量放大 → 加仓到X成，主攻XX
+→ 如果高开低走且炸板率飙升 → 立刻减仓到X成，只留XX底仓
+→ 如果低开震荡 → 观望，等10点后方向确认
+今日机会：1-2个方向 + 具体买点条件
+今日风险：1个致命风险 + 应对
+仓位：X成 | 止损：XX
+
+【今日事件提醒】
+今日盘中需关注：XX点发布的XX数据 / XX公司的XX公告 / XX会议
+对盘面的影响预判：XX
+
+【盘前一句话】
+"今日外围偏X，A股预判X开后X走势，核心盯XX板块+XX股的竞价，策略：XX。" """
+
+
+# ============================================================
 # 核心函数
 # ============================================================
 
@@ -488,6 +540,37 @@ def main():
     if not LLM_API_KEY:
         print("❌ 未配置 DEEPSEEK_API_KEY，请在 GitHub Secrets 中设置")
         return
+    
+    # 盘前简报模式（每天 8:50 执行）
+    report_type = os.environ.get("REPORT_TYPE", "afternoon")
+    if report_type == "morning":
+        # 周末不推盘前简报
+        if weekday >= 5:
+            print(f"⏭️ {date_cn} {weekday_cn} 周末，跳过盘前简报")
+            return
+        
+        from datetime import timedelta
+        yesterday = now - timedelta(days=1)
+        yesterday_str = yesterday.strftime("%Y年%m月%d日")
+        
+        print(f"🌅 {date_cn} {weekday_cn} 盘前简报 — 隔夜消息 + 昨日复盘 + 今日策略")
+        user_prompt = MORNING_PROMPT.format(
+            date_str=date_cn, weekday=weekday_cn, yesterday_str=yesterday_str
+        )
+        title = f"🌅 盘前简报 {date_cn} {weekday_cn}"
+        
+        # 生成报告
+        report = call_deepseek(SYSTEM_PROMPT, user_prompt)
+        
+        # 保存
+        filepath = save_report(report, f"{date_str}_morning")
+        
+        # 推送
+        push_wechat(title, report)
+        print(f"🎉 盘前简报完成：{filepath}")
+        return
+    
+    # ------ 以下为原有午后复盘逻辑 ------
     
     # 选择提示词：周六/周日用周末模板，周一到周五用日常模板
     if weekday == 5:  # 周六
