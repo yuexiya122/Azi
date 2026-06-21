@@ -39,46 +39,57 @@ SYSTEM_PROMPT = """你是A股专业量化复盘分析师，输出风格对标「
 - 涨停梯队、最强风口、情绪周期是核心
 - 总字数300-500字（手机一屏半看完）"""
 
-USER_PROMPT = """## 任务：收盘复盘 + 量化预判
+USER_PROMPT = """## 任务：A股量化复盘（对标开盘啦一图复盘）
 
 日期：{date_str}（{weekday}）
 
-按以下7段格式输出，每段3-5句话，总字数400-550：
+按以下7段格式输出，每段3-5句，总字数400-550。基于上方注入的真实涨停数据进行分析，严禁编造数字。
 
-【涨停数据】
-涨停X家（昨X家）| 跌停X家 | 炸板率X% | 封板率X% | 连板最高X板（XX股）
-数据解读：量能变化方向，炸板率上升/下降意味什么，封板率反映什么情绪
+【涨停全景】
+涨停X家（昨X家）| 炸板X家 | 封板率X% | 连板最高X板（XX股）| 晋级率1进2：X%，2进3：X%，3进4：X%
+数据解读：涨停数是增多还是减少？炸板率升高还是降低？晋级率健康还是恶化？整体做多/做空信号？
 
-【最强风口】
-🔥 风口1：XX（X家涨停，龙头XX）— 一句话逻辑
-🔥 风口2：XX（X家涨停，龙头XX）— 一句话逻辑
-🔥 风口3：XX（X家涨停，龙头XX）— 一句话逻辑
-资金意图：游资在XX方向进攻，机构在XX方向布局，散户在XX方向接盘
+【最强风口】（对标开盘啦板块涨停统计）
+🔥 风口1：XX板块（涨停X家，龙头：XX）— 逻辑一句话
+🔥 风口2：XX板块（涨停X家，龙头：XX）— 逻辑一句话
+🔥 风口3：XX板块（涨停X家，龙头：XX）— 逻辑一句话
+🔥 风口4：XX板块（涨停X家，龙头：XX）
+🔥 风口5：XX板块（涨停X家，龙头：XX）
+资金博弈：游资在XX方向主攻，机构在XX方向调仓，散户在XX方向追涨。板块轮动方向：XX→XX
 
-【涨停梯队】
-X板：XX股（题材，封单强度）→ 能否继续晋级？
-X板：XX股、XX股（题材）
-首板核心：XX、XX、XX
-梯队判断：完整/断层 → 意味什么？高位接力意愿强/弱 → 明天梯队升级还是降级？
+【连板天梯】（对标开盘啦梯队全景）
+X板：XX股（涨停统计，封单/换手）→ 明天晋级概率X%，关键看XX
+X板：XX股、XX股 → 谁能晋级？谁要断板？
+X板：XX股…（全梯队列出）
+首板核心（明日潜在接力标的）：XX、XX、XX（逻辑：XX）
+梯队判断：完整/断层 → 明天预期梯队升级/降级，赚钱效应扩散/收缩
 
-【情绪周期】
-当前阶段：冰点→修复→主升→高潮→退潮→混沌（选一）
-量化依据：连板高X板（向上/向下），涨停数X家（增多/减少），炸板率X%（升高/降低）
-预判：明天情绪大概率走向X阶段，关键看XX信号
+【情绪周期】（对标开盘啦情绪定位）
+当前阶段：冰点→修复→主升→高潮→退潮→混沌（单选）
+判断依据（3个量化指标）：
+① 涨停数趋势：近3日 X→X→X，方向向上/向下
+② 连板晋级率：1进2=X%，2进3=X%，整体健康/恶化
+③ 赚钱效应：昨日涨停今日溢价X%，若X%以上则追高有钱赚，若X%以下则打板亏钱
+周期定位：当前处于X阶段第X天 → 历史上类似位置次日70%概率走向X
 
-【三派观点】（游资派/题材派/量化派各50-80字）
-▎游资：最高X板XX股是情绪锚。明天如果X走势→情绪走向X，做X方向；如果X走势→情绪走向X，空仓。竞价核心看XX股的封单。
-▎题材：当前主线XX处于X阶段，持续性判断还能走X天。暗线XX蠢蠢欲动（逻辑：XX）。明天最值得关注的是XX方向的切换机会。
-▎量化：涨停X家+炸板X%+晋级率X%，模型显示明日做多概率X%。仓位建议X成，进攻方向XX（得分X），防守方向XX。如果XX指标恶化则减仓。
+【三派观点】（各50-80字）
+▎游资视角：最高X板XX股是全场情绪锚。明天竞价如果高开X%且封单>X万手，则做多XX方向首板补涨；如果低开或炸板，则空仓等冰点。今日游资主要进出方向：XX进、XX出。
+▎题材视角：当前主线XX处于X阶段（启动/主升/高潮/退潮），还能走X天。暗线XX在悄悄走强（逻辑：XX），但散户还没注意到。明天如果主线分歧，资金可能切换至XX方向。
+▎量化视角：涨停X家+晋级率X%+封板率X%，量化模型综合评分X/10。明日做多概率约X%，建议仓位X成（进攻X/防守X）。致命恶化信号：如果涨停数跌破X家或炸板率超X%，无条件减仓至X成。
 
-【明日作战计划】
-量化预判（概率）：
-→ 情景A（概率X%）：如果XX信号出现 → 指数目标XX → X成仓位主攻XX方向
-→ 情景B（概率X%）：如果XX信号出现 → 指数目标XX → 防守，只留X成底仓
-盯盘信号：集合竞价XX板块的量能和XX股的封单
-机会：1-2个具体方向 + 买点条件 + 个股类型
-致命风险：如果出现XX，无条件撤退
-仓位：X成（进攻X/防守X）| 止损线：XX"""
+【明日操作策略】
+竞价（9:15-9:25）核心看点：
+→ XX股的封单量（超X万手则超预期，可跟随；低于X万手则低于预期，观望）
+→ XX板块的整体竞价强弱
+
+盘中应对（概率推演）：
+→ 情景A（概率X%）：如果XX信号出现 → 指数目标XX → 加仓至X成，主攻XX方向
+→ 情景B（概率X%）：如果XX信号出现 → 指数目标XX → 减仓至X成，只留XX底仓
+
+今日机会方向：1-2个（具体方向+标的类型+买点条件）
+致命风险：如果XX发生，无条件撤退
+仓位：X成（进攻X成/防守X成）| 止损：XX"""
+
 
 # ============================================================
 # 周末提示词（周六：消息面深挖 + 发酵题材 + 量化预判）
@@ -302,39 +313,80 @@ def fetch_real_data(mode: str = "afternoon") -> str:
             except:
                 pass
         
-        # === 2. 涨停板数据（核心） ===
+        # === 2. 涨停板数据 + 晋级率 + 板块统计 ===
         try:
             zt_date = yesterday if mode == "morning" else today
-            for attempt_date in [zt_date, "20260618"]:  # 尝试今天，不行用最近交易日
+            for attempt_date in [zt_date, "20260618"]:
                 try:
                     df_zt = ak.stock_zt_pool_em(date=attempt_date)
-                    if len(df_zt) > 0:
-                        zt_count = len(df_zt)
-                        
-                        # 连板统计
-                        lb_counts = df_zt['连板数'].value_counts().to_dict()
-                        lb_str = ", ".join(f"{k}板:{v}只" for k, v in sorted(lb_counts.items(), reverse=True) if k >= 2)
-                        max_lb = df_zt['连板数'].max()
-                        
-                        parts.append(f"【涨停数据】{attempt_date}共{zt_count}只涨停 | 最高{max_lb}板 | 连板分布：{lb_str}")
-                        
-                        # TOP 涨停原因
-                        top_zt = df_zt[['名称','连板数','涨停统计']].head(15).to_dict('records')
-                        zt_summary = "；".join(f"{z['名称']}({z['涨停统计']})" for z in top_zt)
-                        parts.append(f"【涨停TOP15】{zt_summary}")
-                        
-                        # 首板/连板统计
-                        lb_gt1 = df_zt[df_zt['连板数'] > 1][['名称','连板数','涨停统计']].to_dict('records')
-                        if lb_gt1:
-                            lb_detail = "；".join(f"{z['名称']}：{z['涨停统计']}" for z in lb_gt1)
-                            parts.append(f"【连板股明细】{lb_detail}")
-                        
-                        break
+                    if len(df_zt) == 0:
+                        continue
+                    
+                    # --- 基本统计 ---
+                    zt_count = len(df_zt)
+                    lb_counts = df_zt['连板数'].value_counts().to_dict()
+                    max_lb = int(df_zt['连板数'].max())
+                    zb_count = int(df_zt['炸板次数'].sum())
+                    try:
+                        fb_rate = f"{zb_count/(zt_count+zb_count)*100:.0f}%" if (zt_count+zb_count)>0 else "N/A"
+                    except:
+                        fb_rate = "N/A"
+                    
+                    # 连板天梯
+                    lb_parts = []
+                    for k in sorted(lb_counts.keys(), reverse=True):
+                        lb_parts.append(f"{int(k)}板:{int(lb_counts[k])}只")
+                    lb_str = " > ".join(lb_parts)
+                    
+                    # --- 晋级率（对比昨日数据） ---
+                    try:
+                        from datetime import timedelta
+                        yday_attempt = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+                        df_zt_yday = ak.stock_zt_pool_em(date=yday_attempt)
+                        if len(df_zt_yday) > 0:
+                            yday_counts = df_zt_yday['连板数'].value_counts().to_dict()
+                            jjl_parts = []
+                            for bn in range(1, 6):
+                                today_n = int(lb_counts.get(bn, 0))
+                                yday_n = int(yday_counts.get(bn-1, 0))
+                                r = f"{today_n/yday_n*100:.0f}%" if yday_n > 0 else "-"
+                                jjl_parts.append(f"{bn-1}进{bn}:{r}({today_n}/{yday_n})")
+                            parts.append(f"【晋级率】{' | '.join(jjl_parts)}")
+                    except:
+                        pass
+                    
+                    # --- 板块涨停统计 ---
+                    try:
+                        sector_counts = df_zt['所属行业'].value_counts().head(8)
+                        sector_str = "；".join(f"{k}({int(v)}家)" for k, v in sector_counts.items())
+                        parts.append(f"【板块涨停统计】{sector_str}")
+                    except:
+                        pass
+                    
+                    # 汇总
+                    parts.append(f"【涨停数据 {attempt_date}】涨停{zt_count}家 | 炸板{zb_count}次 | 炸板率{fb_rate} | 最高{max_lb}板 | 连板天梯：{lb_str}")
+                    
+                    # TOP涨停明细
+                    top_cols = [c for c in ['名称','连板数','涨停统计','所属行业','封板资金','换手率'] if c in df_zt.columns]
+                    top_zt = df_zt[top_cols].head(12).to_dict('records')
+                    zt_summary = "；".join(
+                        f"{z.get('名称','')}({z.get('连板数','')}板/{z.get('涨停统计','')}/{z.get('所属行业','')})" 
+                        for z in top_zt
+                    )
+                    parts.append(f"【涨停TOP12】{zt_summary}")
+                    
+                    # 连板股明细
+                    lb_gt1 = df_zt[df_zt['连板数'] > 1].sort_values('连板数', ascending=False)
+                    if len(lb_gt1) > 0:
+                        lb_detail = "；".join(
+                            f"{r['名称']}：{r['连板数']}板({r.get('涨停统计','')}|{r.get('所属行业','')})"
+                            for _, r in lb_gt1.iterrows()
+                        )
+                        parts.append(f"【连板股明细】{lb_detail}")
+                    
+                    break
                 except Exception as e:
                     continue
-        
-        except Exception as e:
-            parts.append(f"⚠️ 涨停数据获取失败，使用训练数据")
         
         # === 3. 板块排行 ===
         try:
