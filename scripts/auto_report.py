@@ -387,6 +387,8 @@ def fetch_real_data(mode: str = "afternoon") -> str:
                     break
                 except Exception as e:
                     continue
+        except Exception as e:
+            parts.append(f"⚠️ 涨停数据获取失败，使用训练数据分析")
         
         # === 3. 板块排行 ===
         try:
