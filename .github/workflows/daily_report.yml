@@ -38,13 +38,13 @@ jobs:
       
       - name: 📤 提交报告到仓库
         run: |
-          # 检查是否有报告文件
           if [ -z "$(ls -A reports/ 2>/dev/null)" ]; then
-            echo "ℹ️ 今日无报告生成（周末或脚本跳过），无需提交"
+            echo "ℹ️ 今日无报告，跳过提交"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase
           git add reports/
           if git diff --quiet && git diff --staged --quiet; then
             echo "ℹ️ 无变更，跳过提交"
