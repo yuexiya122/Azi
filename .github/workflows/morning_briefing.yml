@@ -44,6 +44,7 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main --rebase
           git add reports/
           if git diff --quiet && git diff --staged --quiet; then
             echo "ℹ️ 无变更，跳过提交"
