@@ -1,11 +1,7 @@
 name: 每日盘前简报
 
 on:
-  # 每天 UTC 00:50 = 北京时间 8:50（周一至周五）
-  schedule:
-    - cron: '55 0 * * 1-5'
-  
-  # 支持手动触发
+  # 由定时调度器触发
   workflow_dispatch:
 
 permissions:
