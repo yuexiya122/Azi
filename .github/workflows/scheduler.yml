@@ -16,33 +16,34 @@ jobs:
       - name: ⏰ 判断是否到推送时间
         run: |
           HOUR_BJ=$(TZ='Asia/Shanghai' date +%H)
-          MIN_BJ=$(TZ='Asia/Shanghai' date +%M)
           WEEKDAY=$(TZ='Asia/Shanghai' date +%u)
           
-          echo "北京时间: ${HOUR_BJ}:${MIN_BJ} 星期${WEEKDAY}"
+          echo "北京时间: ${HOUR_BJ}点 星期${WEEKDAY}"
           
           if [ "$WEEKDAY" -ge 6 ]; then
             echo "⏭️ 周末，跳过"
             exit 0
           fi
           
-          if [ "$HOUR_BJ" = "08" ] && [ "$MIN_BJ" -ge 50 ]; then
+          # 盘前简报：UTC 0点 = 北京8点
+          if [ "$HOUR_BJ" = "08" ]; then
             echo "🌅 触发盘前简报..."
             curl -s -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/${{ github.repository }}/actions/workflows/morning_briefing.yml/dispatches \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/morning_briefing.yml/dispatches" \
               -d '{"ref":"main"}'
             echo ""
             exit 0
           fi
           
-          if [ "$HOUR_BJ" = "15" ] && [ "$MIN_BJ" -ge 30 ] && [ "$MIN_BJ" -le 39 ]; then
+          # 午后复盘：UTC 7点 = 北京15点
+          if [ "$HOUR_BJ" = "15" ]; then
             echo "📈 触发午后复盘..."
             curl -s -X POST \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
               -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/${{ github.repository }}/actions/workflows/daily_report.yml/dispatches \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/daily_report.yml/dispatches" \
               -d '{"ref":"main"}'
             echo ""
             exit 0
