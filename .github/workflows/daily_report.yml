@@ -2,40 +2,66 @@ name: A股每日自动复盘（含周末消息精复盘）
 
 on:
   schedule:
-    - cron: '42 7 * * *'  # UTC 7:42 = 北京 15:42
+    - cron: '42 7 * * *'  # UTC 7:42 = 北京 15:42 (三重兜底)
   workflow_dispatch:
   repository_dispatch:
     types: [afternoon]
 
-# 赋予写权限，否则 git push 会失败
 permissions:
   contents: write
+  actions: write
 
 jobs:
   generate-report:
     runs-on: ubuntu-latest
     
     steps:
+      - name: ⏰ 时间判断 —— 不是目标时段直接跳过
+        id: check
+        run: |
+          HOUR_BJ=$(TZ='Asia/Shanghai' date +%H)
+          MIN_BJ=$(TZ='Asia/Shanghai' date +%M)
+          WEEKDAY=$(TZ='Asia/Shanghai' date +%u)
+          echo "北京时间: ${HOUR_BJ}:${MIN_BJ} 星期${WEEKDAY}"
+          
+          if [ "$WEEKDAY" -ge 6 ]; then
+            echo "SKIP=true" >> $GITHUB_OUTPUT
+            echo "⏭️ 周末"
+            exit 0
+          fi
+          
+          # 午后复盘窗口: 15:00-16:00
+          if [ "$HOUR_BJ" = "15" ]; then
+            echo "SKIP=false" >> $GITHUB_OUTPUT
+            echo "✅ 在午后复盘窗口"
+          else
+            echo "SKIP=true" >> $GITHUB_OUTPUT
+            echo "⏭️ 非推送时段"
+          fi
+      
       - name: 📥 拉取代码
+        if: steps.check.outputs.SKIP != 'true'
         uses: actions/checkout@v4
       
       - name: 🐍 设置 Python 环境
+        if: steps.check.outputs.SKIP != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
       - name: 📦 安装依赖
-        run: |
-          pip install --quiet openai requests akshare
+        if: steps.check.outputs.SKIP != 'true'
+        run: pip install --quiet openai requests akshare
       
       - name: 🚀 生成复盘报告
+        if: steps.check.outputs.SKIP != 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
-        run: |
-          python scripts/auto_report.py
+        run: python scripts/auto_report.py
       
       - name: 📤 提交报告到仓库
+        if: steps.check.outputs.SKIP != 'true'
         run: |
           if [ -z "$(ls -A reports/ 2>/dev/null)" ]; then
             echo "ℹ️ 今日无报告，跳过提交"
@@ -51,11 +77,22 @@ jobs:
             git commit -m "chore: 自动更新 $(date +%Y-%m-%d) 复盘报告"
             git push
           fi
+        continue-on-error: true
       
-      - name: 📎 上传报告为 Artifact（备用下载）
+      - name: 📎 上传报告为 Artifact
+        if: steps.check.outputs.SKIP != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: a-stock-report-${{ github.run_number }}
           path: reports/
           retention-days: 30
         continue-on-error: true
+
+      # ===== 自触发链条：每次运行结束触发下一次 =====
+      - name: 🔗 自触发下一轮
+        run: |
+          curl -s -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/daily_report.yml/dispatches" \
+            -d '{"ref":"main"}'
