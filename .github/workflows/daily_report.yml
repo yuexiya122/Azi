@@ -40,7 +40,6 @@ jobs:
           fi
       
       - name: 📥 拉取代码
-        if: steps.check.outputs.SKIP != 'true'
         uses: actions/checkout@v4
       
       - name: 🐍 设置 Python 环境
@@ -88,13 +87,10 @@ jobs:
           retention-days: 30
         continue-on-error: true
 
-      # ===== 自触发链条 =====
+      # ===== 自触发链：精准休眠到下一个目标时间 =====
       - name: 🔗 自触发下一轮
         run: |
-          WEEKDAY=$(TZ='Asia/Shanghai' date +%u)
-          if [ "$WEEKDAY" -ge 6 ]; then echo "⏹️ 周末停链"; exit 0; fi
-          echo "⏳ 休眠10分钟后触发下一轮..."
-          sleep 600
+          bash scripts/sleep_until_target.sh 15 || exit 0
           curl -s -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
