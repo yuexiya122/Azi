@@ -2,7 +2,7 @@ name: 定时调度器（心跳）
 
 on:
   schedule:
-    - cron: '0 * * * *'  # 每小时整点 UTC
+    - cron: '17 * * * *'  # 每小时17分 UTC（避开整点拥堵）
   workflow_dispatch:
 
 permissions:

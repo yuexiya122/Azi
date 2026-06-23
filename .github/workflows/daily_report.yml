@@ -1,8 +1,11 @@
 name: A股每日自动复盘（含周末消息精复盘）
 
 on:
-  # 由定时调度器触发
+  schedule:
+    - cron: '42 7 * * *'  # UTC 7:42 = 北京 15:42
   workflow_dispatch:
+  repository_dispatch:
+    types: [afternoon]
 
 # 赋予写权限，否则 git push 会失败
 permissions:

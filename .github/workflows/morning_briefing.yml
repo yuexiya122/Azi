@@ -1,8 +1,11 @@
 name: 每日盘前简报
 
 on:
-  # 由定时调度器触发
+  schedule:
+    - cron: '52 0 * * 1-5'  # UTC 0:52 = 北京 8:52
   workflow_dispatch:
+  repository_dispatch:
+    types: [morning]
 
 permissions:
   contents: write
