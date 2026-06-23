@@ -88,9 +88,13 @@ jobs:
           retention-days: 30
         continue-on-error: true
 
-      # ===== 自触发链条：每次运行结束触发下一次 =====
+      # ===== 自触发链条 =====
       - name: 🔗 自触发下一轮
         run: |
+          WEEKDAY=$(TZ='Asia/Shanghai' date +%u)
+          if [ "$WEEKDAY" -ge 6 ]; then echo "⏹️ 周末停链"; exit 0; fi
+          echo "⏳ 休眠10分钟后触发下一轮..."
+          sleep 600
           curl -s -X POST \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
