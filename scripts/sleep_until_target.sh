@@ -20,9 +20,9 @@ CURRENT_MIN_BJ=$(TZ='Asia/Shanghai' date +%M)
 echo "北京时间: ${CURRENT_HOUR_BJ}:${CURRENT_MIN_BJ} 星期${WEEKDAY}"
 
 # 计算今天目标时间的 epoch (北京时间)
-# 获取今天0点UTC的epoch，加8小时偏移到北京时间0点
+# 北京时间比UTC快8小时，所以北京0点 = UTC前一天的16点
 TODAY_MIDNIGHT_UTC=$(date -d "today 00:00:00" +%s)
-TODAY_MIDNIGHT_BJ=$((TODAY_MIDNIGHT_UTC + 8*3600))
+TODAY_MIDNIGHT_BJ=$((TODAY_MIDNIGHT_UTC - 8*3600))
 
 # 今天目标时间的 epoch
 TODAY_TARGET=$((TODAY_MIDNIGHT_BJ + TARGET_HOUR * 3600))
