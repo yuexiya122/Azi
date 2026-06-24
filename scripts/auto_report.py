@@ -276,6 +276,53 @@ A50期货：涨/跌X% → 预示开盘方向
 
 
 # ============================================================
+# 午间总结提示词（12:00 推送）
+# ============================================================
+
+NOON_PROMPT = """## 任务：午间盘面总结
+
+日期：{date_str}（{weekday}）
+
+按以下5段极简格式输出，总字数300-450：
+
+【上午指数概览】
+上证X点（X%）| 深成指X点（X%）| 创业板X点（X%）| 科创50 X点（X%）
+半日成交X亿（昨日上午X亿）→ 放量/缩量
+涨跌比X:X | 涨停X家 | 跌停X家
+一句话定性：上午X强X弱，资金在X方向进攻/防守
+
+【上午最强风口】🔥
+风口1：XX板块（X家涨停，龙头XX）— 逻辑一句话
+风口2：XX板块（X家涨停，龙头XX）— 逻辑一句话  
+风口3：XX板块（X家涨停，龙头XX）— 逻辑一句话
+上午资金路线：开盘XX方向领涨 → X点XX方向接力 → 收盘前XX方向异动
+
+【上午连板 + 龙头追踪】
+最高板：X板XX股（封单X万手，换手X%）→ 下午晋级概率？
+连板梯队：X板X只、X板X只、X板X只 → 梯队完整/断层
+上午最强个股：XX（逻辑）| 上午最坑个股：XX（原因）
+首板值得关注：XX、XX（下午可能发酵）
+
+【主线暗线 + 资金切换】
+主线：XX（上午涨停X家，持续性X天）→ 下午预判：继续加强/分歧
+暗线：XX（悄悄在涨X%，板块内X只红盘）→ 下午是否爆发？
+退潮方向：XX（上午资金流出X亿/炸板X家）
+资金切换信号：从XX流向XX（X点到X点这个趋势最明显）
+
+【下午操作策略】
+下午重点观察：
+→ 如果XX板块午后继续加强 → 今天主线确认，尾盘可加仓
+→ 如果XX龙头炸板 → 情绪退潮信号，减仓防守
+→ 如果成交量萎缩X%以下 → 观望不操作
+下午机会：1个方向 + 条件
+下午风险：1个致命信号
+仓位：保持X成 / 加至X成 / 减至X成
+
+【一句话】
+"上午X强X弱，核心矛盾是XX，下午预判X走势，策略：XX。" """
+
+
+# ============================================================
 # 核心函数
 # ============================================================
 
@@ -658,10 +705,9 @@ def main():
         print("❌ 未配置 DEEPSEEK_API_KEY，请在 GitHub Secrets 中设置")
         return
     
-    # 盘前简报模式（每天 8:50 执行）
+    # 盘前简报模式（8:00）
     report_type = os.environ.get("REPORT_TYPE", "afternoon")
     if report_type == "morning":
-        # 周末不推盘前简报
         if weekday >= 5:
             print(f"⏭️ {date_cn} {weekday_cn} 周末，跳过盘前简报")
             return
@@ -670,21 +716,33 @@ def main():
         yesterday = now - timedelta(days=1)
         yesterday_str = yesterday.strftime("%Y年%m月%d日")
         
-        print(f"🌅 {date_cn} {weekday_cn} 盘前简报 — 隔夜消息 + 昨日复盘 + 今日策略")
+        print(f"🌅 {date_cn} {weekday_cn} 盘前简报")
         user_prompt = MORNING_PROMPT.format(
             date_str=date_cn, weekday=weekday_cn, yesterday_str=yesterday_str
         )
         title = f"🌅 盘前简报 {date_cn} {weekday_cn}"
         
-        # 生成报告
         report = call_deepseek(SYSTEM_PROMPT, user_prompt, mode="morning")
-        
-        # 保存
         filepath = save_report(report, f"{date_str}_morning")
-        
-        # 推送
         push_wechat(title, report)
         print(f"🎉 盘前简报完成：{filepath}")
+        return
+
+    # 午间总结模式（12:00）
+    if report_type == "noon":
+        if weekday >= 5:
+            print(f"⏭️ {date_cn} {weekday_cn} 周末，跳过午间总结")
+            return
+        
+        print(f"☀️ {date_cn} {weekday_cn} 午间总结")
+        user_prompt = NOON_PROMPT.format(date_str=date_cn, weekday=weekday_cn)
+        title = f"☀️ 午间盘面 {date_cn} {weekday_cn}"
+        
+        report = call_deepseek(SYSTEM_PROMPT, user_prompt, mode="afternoon")
+        filepath = save_report(report, f"{date_str}_noon")
+        push_wechat(title, report)
+        print(f"🎉 午间总结完成：{filepath}")
+        return
         return
     
     # ------ 以下为原有午后复盘逻辑 ------
