@@ -1,8 +1,6 @@
 name: 全天复盘 15:30
 
 on:
-  schedule:
-    - cron: '30 7 * * 1-5'  # UTC 7:30 = 北京 15:30
   workflow_dispatch:
 
 permissions:

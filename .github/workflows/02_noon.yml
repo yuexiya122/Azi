@@ -1,8 +1,6 @@
 name: 午间总结 12:00
 
 on:
-  schedule:
-    - cron: '0 4 * * 1-5'  # UTC 4:00 = 北京 12:00
   workflow_dispatch:
 
 permissions:
