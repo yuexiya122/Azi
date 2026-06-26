@@ -376,125 +376,140 @@ def fetch_real_data(mode: str = "afternoon") -> str:
         # === 2. 涨停板数据 + 晋级率 + 板块统计 ===
         try:
             zt_date = yesterday if mode == "morning" else today
-            for attempt_date in [zt_date, "20260618"]:
+            # 动态备选日期：今天→昨天→前天→大前天（避免硬编码过期数据）
+            from datetime import timedelta
+            fallback_dates = []
+            for offset in range(5):
+                fd = (datetime.now() - timedelta(days=offset)).strftime("%Y%m%d")
+                if fd not in fallback_dates:
+                    fallback_dates.append(fd)
+            
+            attempt_dates = [zt_date] + [d for d in fallback_dates if d != zt_date]
+            df_zt = None
+            actual_date_used = None
+            
+            for attempt_date in attempt_dates:
                 try:
-                    df_zt = ak.stock_zt_pool_em(date=attempt_date)
-                    if len(df_zt) == 0:
-                        continue
-                    
-                    # --- 基本统计 ---
-                    zt_count = len(df_zt)
-                    lb_counts = df_zt['连板数'].value_counts().to_dict()
-                    max_lb = int(df_zt['连板数'].max())
-                    zb_count = int(df_zt['炸板次数'].sum())
-                    try:
-                        fb_rate = f"{zb_count/(zt_count+zb_count)*100:.0f}%" if (zt_count+zb_count)>0 else "N/A"
-                    except:
-                        fb_rate = "N/A"
-                    
-                    # 连板天梯
-                    lb_parts = []
-                    for k in sorted(lb_counts.keys(), reverse=True):
-                        lb_parts.append(f"{int(k)}板:{int(lb_counts[k])}只")
-                    lb_str = " > ".join(lb_parts)
-                    
-                    # --- 晋级率（对比昨日数据） ---
-                    try:
-                        from datetime import timedelta
-                        yday_attempt = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
-                        df_zt_yday = ak.stock_zt_pool_em(date=yday_attempt)
-                        if len(df_zt_yday) > 0:
-                            yday_counts = df_zt_yday['连板数'].value_counts().to_dict()
-                            jjl_parts = []
-                            for bn in range(1, 6):
-                                today_n = int(lb_counts.get(bn, 0))
-                                yday_n = int(yday_counts.get(bn-1, 0))
-                                r = f"{today_n/yday_n*100:.0f}%" if yday_n > 0 else "-"
-                                jjl_parts.append(f"{bn-1}进{bn}:{r}({today_n}/{yday_n})")
-                            parts.append(f"【晋级率】{' | '.join(jjl_parts)}")
-                    except:
-                        pass
-                    
-                    # --- 板块涨停统计 ---
-                    try:
-                        sector_counts = df_zt['所属行业'].value_counts().head(8)
-                        sector_str = "；".join(f"{k}({int(v)}家)" for k, v in sector_counts.items())
-                        parts.append(f"【板块涨停统计】{sector_str}")
-                    except:
-                        pass
-                    
-                    # --- 【题材淘金】龙头/中军识别 ★ 核心新增 ---
-                    try:
-                        ld_parts = []
-                        top_sectors = df_zt['所属行业'].value_counts().head(6)
-                        
-                        for sector_name, zt_n in top_sectors.items():
-                            sector_stocks = df_zt[df_zt['所属行业'] == sector_name].sort_values(
-                                ['连板数', '封板资金'], ascending=[False, False]
-                            )
-                            
-                            if len(sector_stocks) == 0:
-                                continue
-                            
-                            # 龙一：连板最高
-                            l1 = sector_stocks.iloc[0]
-                            l1_lb = int(l1.get('连板数', 0))
-                            l1_fund = l1.get('封板资金', 0) / 1e8  # 转亿
-                            l1_mcap = l1.get('流通市值', 0) / 1e8
-                            l1_time = str(l1.get('首次封板时间', '--'))
-                            l1_str = f"龙一：{l1['名称']}({l1_lb}板|封板{l1_fund:.1f}亿|市值{l1_mcap:.0f}亿|首封{l1_time})"
-                            
-                            # 龙二如果有
-                            l2_str = ""
-                            if len(sector_stocks) > 1:
-                                l2 = sector_stocks.iloc[1]
-                                l2_lb = int(l2.get('连板数', 0))
-                                l2_fund = l2.get('封板资金', 0) / 1e8
-                                if l2_lb >= 1:
-                                    l2_str = f"\n  龙二：{l2['名称']}({l2_lb}板|封板{l2_fund:.1f}亿)"
-                            
-                            # 尝试识别中军：同板块内市值>100亿的涨停股
-                            big_stocks = sector_stocks[sector_stocks['流通市值'] > 100e8]
-                            if len(big_stocks) > 0:
-                                zj = big_stocks.iloc[0]
-                                zj_mcap = zj.get('流通市值', 0) / 1e8
-                                zj_str = f"\n  中军：{zj['名称']}(市值{zj_mcap:.0f}亿|连板{int(zj.get('连板数',0))}板|封板{zj.get('封板资金',0)/1e8:.1f}亿)"
-                            else:
-                                zj_str = "\n  中军：暂无（板块大市值尚未涨停，纯小票情绪）"
-                            
-                            ld_parts.append(f"▎{sector_name}(涨停{int(zt_n)}家)\n  {l1_str}{l2_str}{zj_str}")
-                        
-                        if ld_parts:
-                            parts.append(f"【题材淘金·龙头中军】\n" + "\n\n".join(ld_parts))
-                    except Exception as e:
-                        parts.append(f"⚠️ 龙头识别异常: {e}")
-                    
-                    # 汇总
-                    parts.append(f"【涨停数据 {attempt_date}】涨停{zt_count}家 | 炸板{zb_count}次 | 炸板率{fb_rate} | 最高{max_lb}板 | 连板天梯：{lb_str}")
-                    
-                    # TOP涨停明细
-                    top_cols = [c for c in ['名称','连板数','涨停统计','所属行业','封板资金','换手率'] if c in df_zt.columns]
-                    top_zt = df_zt[top_cols].head(12).to_dict('records')
-                    zt_summary = "；".join(
-                        f"{z.get('名称','')}({z.get('连板数','')}板/{z.get('涨停统计','')}/{z.get('所属行业','')})" 
-                        for z in top_zt
-                    )
-                    parts.append(f"【涨停TOP12】{zt_summary}")
-                    
-                    # 连板股明细
-                    lb_gt1 = df_zt[df_zt['连板数'] > 1].sort_values('连板数', ascending=False)
-                    if len(lb_gt1) > 0:
-                        lb_detail = "；".join(
-                            f"{r['名称']}：{r['连板数']}板({r.get('涨停统计','')}|{r.get('所属行业','')})"
-                            for _, r in lb_gt1.iterrows()
-                        )
-                        parts.append(f"【连板股明细】{lb_detail}")
-                    
-                    break
-                except Exception as e:
+                    df_try = ak.stock_zt_pool_em(date=attempt_date)
+                    if len(df_try) > 0:
+                        df_zt = df_try
+                        actual_date_used = attempt_date
+                        break
+                except:
                     continue
+            
+            if df_zt is None:
+                parts.append("⚠️ 涨停数据抓取失败（所有日期均无数据），请检查 akshare 或网络")
+            else:
+                # --- 基本统计 ---
+                zt_count = len(df_zt)
+                lb_counts = df_zt['连板数'].value_counts().to_dict()
+                max_lb = int(df_zt['连板数'].max())
+                zb_count = int(df_zt['炸板次数'].sum())
+                try:
+                    fb_rate = f"{zb_count/(zt_count+zb_count)*100:.0f}%" if (zt_count+zb_count)>0 else "N/A"
+                except:
+                    fb_rate = "N/A"
+                
+                # 连板天梯
+                lb_parts = []
+                for k in sorted(lb_counts.keys(), reverse=True):
+                    lb_parts.append(f"{int(k)}板:{int(lb_counts[k])}只")
+                lb_str = " > ".join(lb_parts)
+                
+                # --- 晋级率（对比昨日数据） ---
+                try:
+                    yday_attempt = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+                    df_zt_yday = ak.stock_zt_pool_em(date=yday_attempt)
+                    if len(df_zt_yday) > 0:
+                        yday_counts = df_zt_yday['连板数'].value_counts().to_dict()
+                        jjl_parts = []
+                        for bn in range(1, 6):
+                            today_n = int(lb_counts.get(bn, 0))
+                            yday_n = int(yday_counts.get(bn-1, 0))
+                            r = f"{today_n/yday_n*100:.0f}%" if yday_n > 0 else "-"
+                            jjl_parts.append(f"{bn-1}进{bn}:{r}({today_n}/{yday_n})")
+                        parts.append(f"【晋级率】{' | '.join(jjl_parts)}")
+                except:
+                    pass
+                
+                # --- 板块涨停统计 ---
+                try:
+                    sector_counts = df_zt['所属行业'].value_counts().head(8)
+                    sector_str = "；".join(f"{k}({int(v)}家)" for k, v in sector_counts.items())
+                    parts.append(f"【板块涨停统计】{sector_str}")
+                except:
+                    pass
+                
+                # --- 【题材淘金】龙头/中军识别 ---
+                try:
+                    ld_parts = []
+                    top_sectors = df_zt['所属行业'].value_counts().head(6)
+                    
+                    for sector_name, zt_n in top_sectors.items():
+                        sector_stocks = df_zt[df_zt['所属行业'] == sector_name].sort_values(
+                            ['连板数', '封板资金'], ascending=[False, False]
+                        )
+                        
+                        if len(sector_stocks) == 0:
+                            continue
+                        
+                        # 龙一：连板最高
+                        l1 = sector_stocks.iloc[0]
+                        l1_lb = int(l1.get('连板数', 0))
+                        l1_fund = l1.get('封板资金', 0) / 1e8
+                        l1_mcap = l1.get('流通市值', 0) / 1e8
+                        l1_time = str(l1.get('首次封板时间', '--'))
+                        l1_str = f"龙一：{l1['名称']}({l1_lb}板|封板{l1_fund:.1f}亿|市值{l1_mcap:.0f}亿|首封{l1_time})"
+                        
+                        # 龙二
+                        l2_str = ""
+                        if len(sector_stocks) > 1:
+                            l2 = sector_stocks.iloc[1]
+                            l2_lb = int(l2.get('连板数', 0))
+                            l2_fund = l2.get('封板资金', 0) / 1e8
+                            if l2_lb >= 1:
+                                l2_str = f"\n  龙二：{l2['名称']}({l2_lb}板|封板{l2_fund:.1f}亿)"
+                        
+                        # 中军：同板块内市值>100亿的涨停股
+                        big_stocks = sector_stocks[sector_stocks['流通市值'] > 100e8]
+                        if len(big_stocks) > 0:
+                            zj = big_stocks.iloc[0]
+                            zj_mcap = zj.get('流通市值', 0) / 1e8
+                            zj_str = f"\n  中军：{zj['名称']}(市值{zj_mcap:.0f}亿|连板{int(zj.get('连板数',0))}板|封板{zj.get('封板资金',0)/1e8:.1f}亿)"
+                        else:
+                            zj_str = "\n  中军：暂无（板块大市值尚未涨停，纯小票情绪）"
+                        
+                        ld_parts.append(f"▎{sector_name}(涨停{int(zt_n)}家)\n  {l1_str}{l2_str}{zj_str}")
+                    
+                    if ld_parts:
+                        parts.append(f"【题材淘金·龙头中军（数据日期 {actual_date_used}）】\n" + "\n\n".join(ld_parts))
+                except Exception as e:
+                    parts.append(f"⚠️ 龙头识别异常: {e}")
+                
+                # 汇总（带数据日期标注）
+                date_label = f" (数据日期 {actual_date_used})" if actual_date_used != zt_date else ""
+                parts.append(f"【涨停数据{date_label}】涨停{zt_count}家 | 炸板{zb_count}次 | 炸板率{fb_rate} | 最高{max_lb}板 | 连板天梯：{lb_str}")
+                
+                # TOP涨停明细
+                top_cols = [c for c in ['名称','连板数','涨停统计','所属行业','封板资金','换手率'] if c in df_zt.columns]
+                top_zt = df_zt[top_cols].head(12).to_dict('records')
+                zt_summary = "；".join(
+                    f"{z.get('名称','')}({z.get('连板数','')}板/{z.get('涨停统计','')}/{z.get('所属行业','')})" 
+                    for z in top_zt
+                )
+                parts.append(f"【涨停TOP12】{zt_summary}")
+                
+                # 连板股明细
+                lb_gt1 = df_zt[df_zt['连板数'] > 1].sort_values('连板数', ascending=False)
+                if len(lb_gt1) > 0:
+                    lb_detail = "；".join(
+                        f"{r['名称']}：{r['连板数']}板({r.get('涨停统计','')}|{r.get('所属行业','')})"
+                        for _, r in lb_gt1.iterrows()
+                    )
+                    parts.append(f"【连板股明细】{lb_detail}")
         except Exception as e:
-            parts.append(f"⚠️ 涨停数据获取失败，使用训练数据分析")
+            parts.append(f"⚠️ 涨停数据获取异常: {e}")
         
         # === 3. 板块排行 ===
         try:
