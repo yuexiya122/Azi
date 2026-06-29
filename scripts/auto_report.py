@@ -708,45 +708,55 @@ def format_for_wechat(md_content: str) -> str:
     return '\n'.join(clean)
 
 
-def push_wechat(title: str, content: str) -> bool:
-    """通过 PushPlus 推送到微信"""
+def push_wechat(title: str, content: str, retries: int = 3) -> bool:
+    """通过 PushPlus 推送到微信（含重试机制）"""
     if not PUSHPLUS_TOKEN:
         print("⚠️ 未配置 PUSHPLUS_TOKEN，跳过推送")
         return False
     
-    try:
-        import requests
-        
-        # 格式化 Markdown 为微信可读格式
-        formatted = format_for_wechat(content)
-        
-        # 截取（微信限制约4000字符）
-        if len(formatted) > 3800:
-            send_content = formatted[:3800] + "\n\n…（完整报告见 GitHub）"
-        else:
-            send_content = formatted
-        
-        url = "https://www.pushplus.plus/send"
-        data = {
-            "token": PUSHPLUS_TOKEN,
-            "title": title,
-            "content": send_content,
-            "channel": "wechat"
-        }
-        
-        resp = requests.post(url, json=data, timeout=15)
-        result = resp.json()
-        
-        if result.get("code") == 200:
-            print("✅ 微信推送成功")
-            return True
-        else:
-            print(f"⚠️ 微信推送失败：{result}")
-            return False
+    import time as _time
     
-    except Exception as e:
-        print(f"⚠️ 微信推送异常：{e}")
-        return False
+    # 格式化 Markdown 为微信可读格式
+    formatted = format_for_wechat(content)
+    
+    # 截取（微信限制约4000字符）
+    if len(formatted) > 3800:
+        send_content = formatted[:3800] + "\n\n…（完整报告见 GitHub）"
+    else:
+        send_content = formatted
+    
+    url = "https://www.pushplus.plus/send"
+    data = {
+        "token": PUSHPLUS_TOKEN,
+        "title": title,
+        "content": send_content,
+        "channel": "wechat"
+    }
+    
+    last_error = ""
+    for attempt in range(1, retries + 1):
+        try:
+            import requests
+            resp = requests.post(url, json=data, timeout=15)
+            result = resp.json()
+            
+            if result.get("code") == 200:
+                print(f"✅ 微信推送成功（第{attempt}次）")
+                return True
+            else:
+                last_error = f"PushPlus返回: {result}"
+                print(f"⚠️ 微信推送失败（第{attempt}/{retries}次）：{result}")
+        except Exception as e:
+            last_error = str(e)
+            print(f"⚠️ 微信推送异常（第{attempt}/{retries}次）：{e}")
+        
+        if attempt < retries:
+            wait = 2 ** attempt  # 2s, 4s, 8s 指数退避
+            print(f"  等待{wait}秒后重试...")
+            _time.sleep(wait)
+    
+    print(f"❌ 微信推送最终失败（{retries}次均失败）：{last_error}")
+    return False
 
 
 def save_report(content: str, date_str: str) -> Path:
