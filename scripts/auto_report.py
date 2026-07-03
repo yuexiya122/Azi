@@ -357,6 +357,51 @@ NOON_PROMPT = """## 任务：午间盘面总结
 # 实时数据抓取
 # ============================================================
 
+def fetch_morning_news() -> str:
+    """抓取盘前新闻：财联社/同花顺/新浪财经"""
+    import requests, json
+    news_items = []
+    
+    # 1. 同花顺快讯（实时市场动态）
+    try:
+        r = requests.get(
+            'https://news.10jqka.com.cn/tapp/news/push/stock/?page=1',
+            headers={'User-Agent': 'Mozilla/5.0'}, timeout=10
+        )
+        if r.status_code == 200:
+            data = json.loads(r.text)
+            items = data.get('data', {}).get('list', []) or data.get('data', [])
+            if isinstance(items, list):
+                for item in items[:10]:
+                    title = item.get('title', '') or item.get('digest', '')
+                    ctime = item.get('ctime', '') or item.get('addtime', '')[:16]
+                    if title:
+                        news_items.append(f"[{ctime}] {title}")
+    except:
+        pass
+    
+    # 2. 新浪财经快讯
+    try:
+        r = requests.get(
+            'https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2509&k=&num=10&page=1',
+            headers={'User-Agent': 'Mozilla/5.0'}, timeout=10
+        )
+        if r.status_code == 200:
+            data = json.loads(r.text)
+            items = data.get('result', {}).get('data', []) or data.get('data', [])
+            if isinstance(items, list):
+                for item in items[:10]:
+                    title = item.get('title', '') or item.get('intro', '')
+                    ctime = item.get('ctime', '') or item.get('intime', '')[:16]
+                    if title and not any(title in n for n in news_items):
+                        news_items.append(f"[{ctime}] {title}")
+    except:
+        pass
+    
+    if news_items:
+        return "【盘前快讯（真实数据）】\n" + "\n".join(f"• {n}" for n in news_items[:15])
+    return "【盘前快讯】API不可达，无实时新闻数据。请基于昨日盘面和公开知识做定性分析，严禁编造具体新闻事件。"
+
 def fetch_real_data(mode: str = "afternoon") -> str:
     """使用 akshare 抓取真实市场数据"""
     parts = []
@@ -560,6 +605,10 @@ def fetch_real_data(mode: str = "afternoon") -> str:
                 import urllib3
                 urllib3.disable_warnings()
                 parts.append("【隔夜数据】境外API暂时不可达 ⚠️ 美股/A50/大宗/汇率数据均缺失，必须在报告中标注[数据暂缺]，严禁编造任何数字（如道指涨跌、纳指点位等）。隔夜判断仅可基于公开已知信息推理（如\"外围市场波动\"等定性描述）。")
+            
+            # 盘前新闻抓取
+            morn_news = fetch_morning_news()
+            parts.append(morn_news)
         
         # === 5. 淘股吧风格指令 ===
         parts.append("【分析要求】请模仿淘股吧题材淘金风格（涨停梯队/情绪周期/主线题材+龙一中军三要素），数据必须基于上方真实数据，拒绝编造。每个风口标注龙一+中军，观点要鲜明。")
