@@ -958,11 +958,7 @@ def main():
     
     # 盘前简报模式（8:00）
     report_type = os.environ.get("REPORT_TYPE", "afternoon")
-    if report_type == "morning":
-        if weekday >= 5:
-            print(f"⏭️ {date_cn} {weekday_cn} 周末，跳过盘前简报")
-            return
-        
+    if report_type == "morning": 
         from datetime import timedelta
         yesterday = now - timedelta(days=1)
         yesterday_str = yesterday.strftime("%Y年%m月%d日")
@@ -980,11 +976,7 @@ def main():
         return
 
     # 午间总结模式（12:00）
-    if report_type == "noon":
-        if weekday >= 5:
-            print(f"⏭️ {date_cn} {weekday_cn} 周末，跳过午间总结")
-            return
-        
+    if report_type == "noon":        
         print(f"☀️ {date_cn} {weekday_cn} 午间总结")
         user_prompt = NOON_PROMPT.format(date_str=date_cn, weekday=weekday_cn)
         title = f"☀️ 午间盘面 {date_cn} {weekday_cn}"
