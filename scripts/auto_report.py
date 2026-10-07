@@ -10,6 +10,7 @@ A股每日自动复盘 + 周末消息面精复盘
 
 import os
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -273,6 +274,11 @@ MORNING_PROMPT = """## 任务：盘前简报（对标财联社早报电报格式
 ▎公司：
   • XX股：XX公告/事件 → 今日走势预判
   （无则写"盘前暂无重大公司公告"）
+
+▎个股利好/利空（★ 新增，基于上方【个股利好/利空提取】真实数据提炼）：
+  • 利好：列出 L5/L4/L3 硬利好标的（股名+一句话），L2/L1 软利好仅概述数量不逐个罗列
+  • 利空：列出 N3/N2 利空标的（股名+一句话），无则写"暂无个股利空"
+  （提取数据为空时，本段写"盘前暂无个股利好/利空信息"）
 
 ▎海外：
   • XX事件 → 对A股传导XX
@@ -695,6 +701,16 @@ def fetch_real_data(mode: str = "afternoon") -> str:
             # 盘前新闻抓取
             morn_news = fetch_morning_news()
             parts.append(morn_news)
+
+            # 个股利好/利空提取（复刻「个股利好提取器」逻辑，失败静默降级）
+            try:
+                sys.path.insert(0, str(Path(__file__).parent))
+                from fetch_stock_news import fetch_stock_news
+                stock_news = fetch_stock_news()
+                if stock_news:
+                    parts.append(stock_news)
+            except Exception:
+                pass
         
         # 午后专属：龙虎榜 + 概念板块数据
         if mode != "morning":
