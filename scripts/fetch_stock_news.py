@@ -154,34 +154,67 @@ _CODE_TABLE = None  # 缓存
 
 
 def _load_code_table():
-    """加载全量 A 股代码表 {名称: 代码}"""
+    """加载全量 A 股代码表 {名称: 代码}。
+
+    优先读内置静态表 scripts/stock_code_table.json（源自本地 exe 工具，
+    含沪深京全量约 8200 只）。原因：云端 GitHub Actions 跑在境外 runner，
+    访问上交所/深交所/北交所官网接口（akshare `stock_info_a_code_name`
+    依赖这些接口）会失败导致代码表为空；而龙虎榜/概念板块用的东财 _em
+    接口云端可用。故代码表改用静态表，避免对交易所官网的实时依赖。
+    """
     global _CODE_TABLE
     if _CODE_TABLE is not None:
         return _CODE_TABLE
 
     mapping = {}
 
-    # 1. 优先用 akshare 拉全量
-    try:
-        import akshare as ak
-        df = ak.stock_info_a_code_name()
-        for _, row in df.iterrows():
-            name = str(row.get("name", "")).strip()
-            code = str(row.get("code", "")).strip()
-            # 清洗：去空格、全角转半角
-            name_clean = name.replace(" ", "").replace("\u3000", "")
-            name_clean = name_clean.replace("Ａ", "A").replace("Ｂ", "B").replace("Ｈ", "H")
-            if name_clean and code:
-                mapping[name_clean] = code
-                # 去掉"股份"等后缀再补一个键，便于快讯简称匹配
-                # 剩余长度须 >= 3，避免"开发"、"日上"等短词误匹配
-                for suf in ["有限公司", "股份", "集团", "科技", "控股"]:
-                    if name_clean.endswith(suf) and len(name_clean) - len(suf) >= 3:
-                        mapping[name_clean[: -len(suf)]] = code
-    except Exception:
-        pass
+    def _fill(df_like):
+        """把 {名称: 代码} 或 DataFrame 灌入 mapping（含清洗 + 后缀剥离）"""
+        # 兼容 DataFrame
+        if hasattr(df_like, "iterrows"):
+            for _, row in df_like.iterrows():
+                name = str(row.get("name", "") or row.get("证券简称", "") or "").strip()
+                code = str(row.get("code", "") or row.get("证券代码", "") or "").strip()
+                _add(name, code)
+        elif isinstance(df_like, dict):
+            for name, code in df_like.items():
+                _add(str(name), str(code))
 
-    # 2. 合并常见别名
+    def _add(name, code):
+        # 仅接受 6 位纯数字代码（沪深京 A 股），排除新三板（A 开头）/三板（4 开头）等
+        code = code.strip()
+        if not (code.isdigit() and len(code) == 6):
+            return
+        name_clean = name.replace(" ", "").replace("\u3000", "")
+        name_clean = name_clean.replace("Ａ", "A").replace("Ｂ", "B").replace("Ｈ", "H")
+        if name_clean and code:
+            mapping[name_clean] = code
+            # 去掉"股份"等后缀再补一个键，便于快讯简称匹配
+            # 剩余长度须 >= 3，避免"开发"、"日上"等短词误匹配
+            for suf in ["有限公司", "股份", "集团", "科技", "控股"]:
+                if name_clean.endswith(suf) and len(name_clean) - len(suf) >= 3:
+                    mapping[name_clean[: -len(suf)]] = code
+
+    # 1. 优先读内置静态代码表（稳定、不依赖境外访问交易所官网）
+    json_path = Path(__file__).parent / "stock_code_table.json"
+    if json_path.exists():
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict) and raw:
+                _fill(raw)
+        except Exception:
+            mapping = {}
+
+    # 2. 静态表缺失/加载失败时，回退 akshare（本地通常可用）
+    if not mapping:
+        try:
+            import akshare as ak
+            _fill(ak.stock_info_a_code_name())
+        except Exception:
+            pass
+
+    # 3. 合并常见别名
     for alias, full in ALIAS_MAP.items():
         if full in mapping:
             mapping[alias] = mapping[full]
@@ -256,12 +289,14 @@ def fetch_stock_news(max_items: int = 30) -> str:
             seen.add(n)
             uniq.append(n)
     if not uniq:
-        return ""
+        return ("【个股利好/利空提取】⚠️ 快讯源均不可达（东方财富/同花顺/新浪无返回），"
+                "无法提取。请据实标注数据源异常，勿编造个股利好利空。")
 
     # 2. 加载代码表
     mapping = _load_code_table()
     if not mapping:
-        return ""
+        return ("【个股利好/利空提取】⚠️ 股票代码表加载失败，无法匹配个股名称。"
+                "请据实标注数据源异常。")
 
     # 3. 逐条匹配 + 评级
     benefit = {}   # code -> {name, level, sample}
@@ -293,7 +328,8 @@ def fetch_stock_news(max_items: int = 30) -> str:
             del benefit[code]
 
     if not benefit and not risk:
-        return ""
+        return (f"【个股利好/利空提取】快讯正常抓取 {len(uniq)} 条，"
+                f"但无个股命中利好/利空关键词，今日盘前暂无明确个股利好利空。")
 
     # 4. 组装输出
     lines = []
